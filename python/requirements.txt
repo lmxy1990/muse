@@ -1,5 +1,6 @@
 torch
 torchaudio
+setuptools<81
 transkun==2.0.1
 demucs>=4.0.1
 lightning>=2.2.1

@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use tauri::{AppHandle, Emitter};
 
-use crate::setup::{ensure_environment, get_python_dir};
+use crate::setup::{ensure_environment, get_python_dir, log_pipeline};
 
 #[derive(Clone, Serialize)]
 pub struct PipelineProgress {
@@ -68,6 +68,12 @@ pub async fn start_pipeline(
         ));
     }
 
+    log_pipeline(format!(
+        "Starting pipeline: input={input}, backend={}, solo_piano={}",
+        backend.as_deref().unwrap_or("transkun"),
+        solo_piano.unwrap_or(false)
+    ));
+
     let mut args = vec![
         script.to_str().unwrap().to_string(),
         input.clone(),
@@ -85,7 +91,10 @@ pub async fn start_pipeline(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to start pipeline: {}", e))?;
+        .map_err(|e| {
+            log_pipeline(format!("Failed to start pipeline: {e}"));
+            format!("Failed to start pipeline: {}", e)
+        })?;
 
     let stderr = child.stderr.take().expect("Failed to capture stderr");
     let stderr_reader = BufReader::new(stderr);
@@ -95,6 +104,9 @@ pub async fn start_pipeline(
         let mut last_error_line = String::new();
         for line in stderr_reader.lines() {
             if let Ok(line) = line {
+                if !line.trim().is_empty() {
+                    log_pipeline(format!("stderr: {line}"));
+                }
                 if let Ok(progress) = serde_json::from_str::<PythonProgress>(&line) {
                     if let (Some(stage), Some(percent)) = (progress.stage, progress.percent) {
                         let _ = app_clone.emit(
@@ -116,6 +128,9 @@ pub async fn start_pipeline(
         let mut full_output = String::new();
         for line in reader.lines() {
             if let Ok(line) = line {
+                if !line.trim().is_empty() {
+                    log_pipeline(format!("stdout: {line}"));
+                }
                 if !full_output.is_empty() {
                     full_output.push('\n');
                 }
@@ -136,6 +151,7 @@ pub async fn start_pipeline(
         } else {
             last_error
         };
+        log_pipeline(format!("Pipeline failed with status {status}: {detail}"));
         return Err(format!("Pipeline failed: {}", detail));
     }
 
@@ -168,6 +184,7 @@ pub async fn start_pipeline(
         percent: 100,
     });
 
+    log_pipeline("Pipeline completed successfully");
     Ok(PipelineResult { metadata, midi_path, perf_midi_path })
 }
 

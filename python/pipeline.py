@@ -4,6 +4,7 @@ import argparse
 import os
 import platform
 import shutil
+import subprocess
 import tempfile
 
 
@@ -213,37 +214,29 @@ def transcribe_audio(audio_path, solo_piano=False):
         piano_path = separate_piano_stem(audio_path)
         progress("transcribing", 45)
 
-    from transkun import transcribe_audio as tk_transcribe, filter_notes, apply_sustain_pedal
-    source = tk_transcribe(piano_path, device="cpu")
-    source = filter_notes(source)
+    import pretty_midi
+    raw_midi_path = os.path.join(_make_temp_dir("tk_raw_"), "raw.mid")
+    result = subprocess.run([
+        sys.executable,
+        "-m",
+        "transkun.transcribe",
+        piano_path,
+        raw_midi_path,
+        "--device",
+        "cpu",
+    ])
+    if result.returncode != 0:
+        raise RuntimeError(f"TransKun transcription failed with exit code {result.returncode}.")
 
     progress("transcribing", 60)
 
-    import pretty_midi
-    import copy
-
-    total_notes = sum(len(inst.notes) for inst in source.instruments)
+    raw_midi = pretty_midi.PrettyMIDI(raw_midi_path)
+    total_notes = sum(len(inst.notes) for inst in raw_midi.instruments)
     if total_notes == 0:
         raise RuntimeError("No notes detected in the audio. Try a longer or louder recording.")
 
-    raw_midi = pretty_midi.PrettyMIDI()
-    raw_piano = pretty_midi.Instrument(program=0, name="Piano")
-    for inst in source.instruments:
-        for note in inst.notes:
-            raw_piano.notes.append(copy.deepcopy(note))
-    raw_midi.instruments.append(raw_piano)
-    raw_midi_path = os.path.join(_make_temp_dir("tk_raw_"), "raw.mid")
-    raw_midi.write(raw_midi_path)
-
-    sustained = apply_sustain_pedal(source)
-    perf_midi = pretty_midi.PrettyMIDI()
-    perf_piano = pretty_midi.Instrument(program=0, name="Piano")
-    for inst in sustained.instruments:
-        for note in inst.notes:
-            perf_piano.notes.append(note)
-    perf_midi.instruments.append(perf_piano)
     perf_midi_path = os.path.join(_make_temp_dir("tk_"), "performance.mid")
-    perf_midi.write(perf_midi_path)
+    raw_midi.write(perf_midi_path)
 
     progress("transcribing", 65)
 

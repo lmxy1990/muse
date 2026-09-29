@@ -19,6 +19,7 @@ pub struct EnvironmentStatus {
 
 static ENVIRONMENT_STATUS: OnceLock<Mutex<EnvironmentStatus>> = OnceLock::new();
 static ENVIRONMENT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+const ENVIRONMENT_MARKER: &str = "muse-environment-v2";
 
 fn audio2sheets_dir() -> PathBuf {
     dirs::home_dir()
@@ -37,6 +38,10 @@ pub fn get_venv_python() -> PathBuf {
 
 pub fn environment_log_path() -> PathBuf {
     audio2sheets_dir().join("logs").join("environment.log")
+}
+
+pub fn pipeline_log_path() -> PathBuf {
+    audio2sheets_dir().join("logs").join("pipeline.log")
 }
 
 fn status_store() -> &'static Mutex<EnvironmentStatus> {
@@ -64,7 +69,14 @@ fn emit_environment_status(app: &AppHandle) {
 }
 
 fn log_environment(message: impl AsRef<str>) {
-    let path = environment_log_path();
+    append_log(&environment_log_path(), message);
+}
+
+pub fn log_pipeline(message: impl AsRef<str>) {
+    append_log(&pipeline_log_path(), message);
+}
+
+fn append_log(path: &PathBuf, message: impl AsRef<str>) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -244,7 +256,10 @@ where
 {
     let python_dir = get_python_dir(app)?;
     let marker = audio2sheets_dir().join(".environment-ready");
-    if venv_python.exists() && marker.exists() {
+    let marker_matches = std::fs::read_to_string(&marker)
+        .map(|content| content.trim() == ENVIRONMENT_MARKER)
+        .unwrap_or(false);
+    if venv_python.exists() && marker_matches {
         mark_progress(on_progress, 100);
         return Ok(venv_python.clone());
     }
@@ -302,7 +317,8 @@ where
             format!("Python setup failed: {last_error}")
         });
     }
-    std::fs::write(&marker, b"ready").map_err(|e| format!("Could not save setup status: {e}"))?;
+    std::fs::write(&marker, ENVIRONMENT_MARKER)
+        .map_err(|e| format!("Could not save setup status: {e}"))?;
     mark_progress(on_progress, 100);
     Ok(venv_python.clone())
 }
