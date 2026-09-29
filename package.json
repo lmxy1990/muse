@@ -1,0 +1,49 @@
+{
+  "name": "audio2sheets",
+  "version": "0.0.1",
+  "description": "Convert audio files to MIDI with AI-powered transcription and neural quantization",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "audio2sheets": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "python"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build",
+    "release": "release-it"
+  },
+  "keywords": [
+    "audio",
+    "midi",
+    "sheet-music",
+    "transcription",
+    "basic-pitch",
+    "demucs",
+    "music",
+    "notation"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mqtik/muse"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@release-it/bumper": "^7.0.5",
+    "@types/node": "^22.16.5",
+    "release-it": "^19.2.4",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.1"
+  }
+}

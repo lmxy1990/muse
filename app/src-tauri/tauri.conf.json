@@ -1,0 +1,55 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/refs/heads/main/crates/tauri-schema-generator/schemas/config.schema.json",
+  "productName": "Muse",
+  "version": "0.1.1",
+  "identifier": "com.muse.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Muse",
+        "width": 1000,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 500,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost data: blob:; media-src 'self' asset: https://asset.localhost blob:; connect-src 'self' ipc: http://ipc.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/.audio2sheets/**",
+          "$APPDATA/muse/**",
+          "$TEMP/**",
+          "$AUDIO/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "resources": {
+      "../../python": "python"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

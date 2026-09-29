@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #0a0a12;
+  --color-bg-glass: rgba(255, 255, 255, 0.06);
+  --color-bg-glass-hover: rgba(255, 255, 255, 0.10);
+  --color-border-glass: rgba(255, 255, 255, 0.10);
+  --color-accent: #8b5cf6;
+  --color-accent-glow: rgba(139, 92, 246, 0.3);
+  --color-success: #22c55e;
+  --color-text-primary: rgba(255, 255, 255, 0.95);
+  --color-text-secondary: rgba(255, 255, 255, 0.5);
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+.glass {
+  background: var(--color-bg-glass);
+  border: 1px solid var(--color-border-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.glass-hover:hover {
+  background: var(--color-bg-glass-hover);
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  50% { transform: scale(1.2); opacity: 0; }
+  100% { transform: scale(0.8); opacity: 0; }
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(139, 92, 246, 0.3); }
+  50% { border-color: rgba(139, 92, 246, 0.6); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-pulse-border {
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+.aurora-footer {
+  position: absolute;
+  bottom: -60px;
+  width: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aurora-light {
+  border-radius: 50%;
+  height: 20px;
+  width: 100%;
+  position: relative;
+  margin: auto;
+}
+
+.aurora-one {
+  animation: aurora-one 5s ease-in-out infinite alternate;
+}
+
+.aurora-two {
+  width: 90%;
+  animation: aurora-two 4s ease-in-out infinite alternate;
+}
+
+.aurora-three {
+  width: 80%;
+  animation: aurora-three 3s ease-in-out infinite alternate;
+}
+
+.aurora-four {
+  width: 70%;
+  animation: aurora-four 2s ease-in-out infinite alternate;
+}
+
+.aurora-five {
+  width: 60%;
+  animation: aurora-five 1s ease-in-out infinite alternate;
+}
+
+@keyframes aurora-one {
+  from { box-shadow: 0 0 250px 20px #473C78; }
+  to { box-shadow: 0 0 100px 15px #7c3aed; }
+}
+
+@keyframes aurora-two {
+  from { box-shadow: 0 0 250px 20px #6d28d9; }
+  to { box-shadow: 0 0 100px 15px #e0d4fc; }
+}
+
+@keyframes aurora-three {
+  from { box-shadow: 0 0 250px 20px #a78bfa; }
+  to { box-shadow: 0 0 100px 15px #ffffff; }
+}
+
+@keyframes aurora-four {
+  from { box-shadow: 0 0 250px 20px #5b21b6; }
+  to { box-shadow: 0 0 100px 15px #c4b5fd; }
+}
+
+@keyframes aurora-five {
+  from { box-shadow: 0 0 250px 20px #8b5cf6; }
+  to { box-shadow: 0 0 100px 15px #f5f3ff; }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
