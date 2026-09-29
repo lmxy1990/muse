@@ -5,6 +5,16 @@ use tauri::{AppHandle, Emitter};
 
 use crate::setup::{ensure_environment, get_python_dir, log_pipeline};
 
+#[cfg(target_os = "windows")]
+fn hide_console_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+
+    command.creation_flags(0x08000000);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_console_window(_command: &mut Command) {}
+
 #[derive(Clone, Serialize)]
 pub struct PipelineProgress {
     pub stage: String,
@@ -86,10 +96,14 @@ pub async fn start_pipeline(
         args.push("--solo-piano".to_string());
     }
 
-    let mut child = Command::new(venv_python.to_str().unwrap())
+    let mut pipeline_command = Command::new(venv_python.to_str().unwrap());
+    pipeline_command
         .args(&args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_console_window(&mut pipeline_command);
+
+    let mut child = pipeline_command
         .spawn()
         .map_err(|e| {
             log_pipeline(format!("Failed to start pipeline: {e}"));
