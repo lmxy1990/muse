@@ -6,7 +6,7 @@ import { Play, Pause, SkipBack, SkipForward, Music } from 'lucide-solid'
 type Tab = 'original' | 'perf' | 'score'
 
 interface PlaybackPanelProps {
-  audioUrl: string
+  audioUrl: string | null
   scoreMidiPath: string | null
   perfMidiPath: string | null
   instruments?: string[]
@@ -43,19 +43,19 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
   const perfSynth = new MidiSynth()
   const scoreSynth = new MidiSynth()
 
-  const isMultiInstrument = () => {
-    const inst = props.instruments || []
-    return inst.length > 0 && !inst.every((n) => n === 'Left Hand' || n === 'Right Hand')
-  }
-
   const availableTabs = (): Tab[] => {
-    const tabs: Tab[] = ['original']
+    const tabs: Tab[] = []
+    if (props.audioUrl) tabs.push('original')
     if (props.perfMidiPath) tabs.push('perf')
-    if (props.scoreMidiPath && !isMultiInstrument()) tabs.push('score')
+    if (props.scoreMidiPath) tabs.push('score')
     return tabs
   }
 
-  const defaultTab = () => props.scoreMidiPath ? 'score' as Tab : 'original' as Tab
+  const defaultTab = () => props.scoreMidiPath
+    ? 'score' as Tab
+    : props.perfMidiPath
+      ? 'perf' as Tab
+      : 'original' as Tab
   const [activeTab, setActiveTab] = createSignal<Tab>(defaultTab())
 
   const [playing, setPlaying] = createSignal(false)
@@ -66,6 +66,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
   const [scoreLoaded, setScoreLoaded] = createSignal(false)
   const [perfError, setPerfError] = createSignal<string | null>(null)
   const [scoreError, setScoreError] = createSignal<string | null>(null)
+  const [playError, setPlayError] = createSignal<string | null>(null)
 
   const [scoreTrackEnabled, setScoreTrackEnabled] = createSignal<boolean[]>([])
   const [scoreTrackNames, setScoreTrackNames] = createSignal<string[]>([])
@@ -94,7 +95,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         height: 56,
         normalize: true,
       })
-      ws.load(props.audioUrl)
+      if (props.audioUrl) ws.load(props.audioUrl)
       ws.on('ready', () => {
         setWsReady(true)
         wsDuration = ws!.getDuration()
@@ -133,7 +134,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
             syncWaveformCursor(0)
           }
         })
-        MidiSynth.preloadInstruments(perfSynth.parsed.tracks.map((t) => t.program))
+        void MidiSynth.preloadInstruments(perfSynth.parsed.tracks.map((t) => t.program)).catch(() => undefined)
         if (activeTab() === 'perf') setDuration(perfSynth.duration)
       }).catch((e: any) => setPerfError(e?.message || String(e)))
     }
@@ -157,7 +158,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
             syncWaveformCursor(0)
           }
         })
-        MidiSynth.preloadInstruments(scoreSynth.parsed.tracks.map((t) => t.program))
+        void MidiSynth.preloadInstruments(scoreSynth.parsed.tracks.map((t) => t.program)).catch(() => undefined)
         if (activeTab() === 'score') setDuration(scoreSynth.duration)
       }).catch((e: any) => setScoreError(e?.message || String(e)))
     }
@@ -198,7 +199,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
 
   const handleWaveformClick = (e: MouseEvent) => {
     const tab = activeTab()
-    if (tab === 'original') return
+    if (tab === 'original' || !waveformRef) return
     const rect = waveformRef!.getBoundingClientRect()
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     const synth = activeSynth()
@@ -209,6 +210,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
   }
 
   const togglePlay = async () => {
+    setPlayError(null)
     const tab = activeTab()
     if (playing()) {
       pauseAll()
@@ -219,7 +221,12 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
     } else {
       const synth = activeSynth()
       synth.initAudioContext()
-      await synth.play(synth.getCurrentTime())
+      try {
+        await synth.play(synth.getCurrentTime())
+      } catch (error: any) {
+        setPlayError(error?.message || '音色加载失败，请检查网络连接后重试')
+        return
+      }
       synth.setVolume(0.8)
       if (tab === 'score') {
         scoreTrackEnabled().forEach((enabled, i) => synth.setTrackEnabled(i, enabled))
@@ -278,6 +285,13 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
     return null
   }
 
+  const loading = () => {
+    const tab = activeTab()
+    if (tab === 'original') return !wsReady()
+    if (tab === 'perf') return !perfLoaded()
+    return !scoreLoaded()
+  }
+
   const showTracks = () => activeTab() === 'score' && scoreTrackNames().length > 1
 
   return (
@@ -301,19 +315,21 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         </div>
       </div>
 
-      <Show when={activeError()}>
+      <Show when={activeError() || playError()}>
         <div class="text-red-400 text-xs text-center">
-          MIDI 加载失败：{activeError()}
+          {activeError() ? `MIDI 加载失败：${activeError()}` : `播放失败：${playError()}`}
         </div>
       </Show>
 
-      <div class="w-full" onClick={handleWaveformClick}>
-        <div
-          ref={waveformRef}
-          class="w-full rounded-xl overflow-hidden transition-opacity duration-200"
-          style={{ opacity: wsReady() ? 1 : 0.3 }}
-        />
-      </div>
+      <Show when={props.audioUrl}>
+        <div class="w-full" onClick={handleWaveformClick}>
+          <div
+            ref={waveformRef}
+            class="w-full rounded-xl overflow-hidden transition-opacity duration-200"
+            style={{ opacity: wsReady() ? 1 : 0.3 }}
+          />
+        </div>
+      </Show>
 
       <div class="flex items-center justify-between text-xs text-text-secondary px-1 -mt-3">
         <span>{formatTime(currentTime())}</span>
@@ -326,7 +342,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         </button>
         <button
           onClick={togglePlay}
-          disabled={!isReady()}
+          disabled={!isReady() || !!activeError()}
           class="w-14 h-14 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
           style={{ background: color() }}
         >
@@ -339,6 +355,12 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
           <SkipForward class="w-5 h-5 text-text-secondary" />
         </button>
       </div>
+
+      <Show when={loading() && !activeError()}>
+        <span class="text-xs text-text-secondary text-center">
+          {activeTab() === 'original' ? '正在加载原音...' : '正在加载 MIDI 音色...'}
+        </span>
+      </Show>
 
       <div
         class="grid transition-[grid-template-rows] duration-300 ease-out"

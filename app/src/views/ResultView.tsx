@@ -34,15 +34,13 @@ export default function ResultView() {
           </span>
         </Show>
 
-        <Show when={audioUrl()}>
-          {(url) => (
-            <PlaybackPanel
-              audioUrl={url()}
-              scoreMidiPath={midiPath()}
-              perfMidiPath={perfMidiPath()}
-              instruments={metadata()?.instruments}
-            />
-          )}
+        <Show when={audioUrl() || midiPath() || perfMidiPath()}>
+          <PlaybackPanel
+            audioUrl={audioUrl()}
+            scoreMidiPath={midiPath()}
+            perfMidiPath={perfMidiPath()}
+            instruments={metadata()?.instruments}
+          />
         </Show>
 
         <Show when={metadataLine()}>
