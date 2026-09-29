@@ -1,6 +1,7 @@
 torch
 torchaudio
 setuptools<81
+imageio-ffmpeg>=0.6.0
 transkun==2.0.1
 demucs>=4.0.1
 lightning>=2.2.1

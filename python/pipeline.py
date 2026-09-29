@@ -37,6 +37,22 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 YOURMT3_DIR = os.path.join(_SCRIPT_DIR, "..", "yourmt3")
 
 
+def _configure_audio_tools():
+    """Make the bundled ffmpeg executable available to audio libraries."""
+    try:
+        import imageio_ffmpeg
+
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        ffmpeg_dir = os.path.dirname(ffmpeg)
+        path_entries = os.environ.get("PATH", "").split(os.pathsep)
+        if ffmpeg_dir not in path_entries:
+            os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+        os.environ.setdefault("FFMPEG_BINARY", ffmpeg)
+        return ffmpeg
+    except Exception:
+        return None
+
+
 def _add_yourmt3_to_path():
     amt_src = os.path.join(YOURMT3_DIR, "amt", "src")
     if os.path.isdir(amt_src) and amt_src not in sys.path:
@@ -206,6 +222,7 @@ def separate_piano_stem(audio_path):
 
 def transcribe_audio(audio_path, solo_piano=False):
     audio_path = os.path.abspath(audio_path)
+    _configure_audio_tools()
 
     if solo_piano:
         piano_path = audio_path
@@ -216,10 +233,10 @@ def transcribe_audio(audio_path, solo_piano=False):
 
     import pretty_midi
     raw_midi_path = os.path.join(_make_temp_dir("tk_raw_"), "raw.mid")
+    runner_path = os.path.join(_SCRIPT_DIR, "transkun_runner.py")
     result = subprocess.run([
         sys.executable,
-        "-m",
-        "transkun.transcribe",
+        runner_path,
         piano_path,
         raw_midi_path,
         "--device",

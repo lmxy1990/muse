@@ -19,7 +19,7 @@ pub struct EnvironmentStatus {
 
 static ENVIRONMENT_STATUS: OnceLock<Mutex<EnvironmentStatus>> = OnceLock::new();
 static ENVIRONMENT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-const ENVIRONMENT_MARKER: &str = "muse-environment-v2";
+const ENVIRONMENT_MARKER: &str = "muse-environment-v3";
 
 fn audio2sheets_dir() -> PathBuf {
     dirs::home_dir()
