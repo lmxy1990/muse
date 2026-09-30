@@ -33,6 +33,15 @@ def install_dependencies(requirements):
     run([sys.executable, "-m", "pip", "install", "-r", requirements], "dependencies", 10)
 
 
+def remove_unused_dependencies():
+    # transformers is not used by Muse and had vulnerable versions in older environments.
+    run(
+        [sys.executable, "-m", "pip", "uninstall", "--yes", "transformers"],
+        "unused transformers cleanup",
+        12,
+    )
+
+
 def install_pm2s(pm2s_dir):
     pm2s_dir = os.path.abspath(pm2s_dir)
     if not os.path.isdir(os.path.join(pm2s_dir, "pm2s")):
@@ -62,6 +71,7 @@ def main():
 
     progress(1, "Preparing Python environment")
     install_dependencies(os.path.abspath(args.requirements))
+    remove_unused_dependencies()
     install_pm2s(args.pm2s_dir)
     progress(100, "Python environment ready")
 
