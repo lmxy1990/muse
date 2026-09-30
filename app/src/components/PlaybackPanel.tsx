@@ -2,6 +2,7 @@ import { createSignal, Show, For, onMount, onCleanup } from 'solid-js'
 import WaveSurfer from 'wavesurfer.js'
 import { MidiSynth } from '../lib/midiSynth'
 import { logPlayback } from '../lib/playbackAdapter'
+import { claimPlayback } from '../lib/playbackManager'
 import { Play, Pause, SkipBack, SkipForward, Music, Volume2 } from 'lucide-solid'
 
 type Tab = 'original' | 'perf' | 'score'
@@ -85,11 +86,31 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
   const [wsReady, setWsReady] = createSignal(false)
   const [audioReady, setAudioReady] = createSignal(false)
   let wsDuration = 0
+  let releasePlaybackClaim: (() => void) | undefined
 
   const syncWaveformCursor = (midiTime: number) => {
     if (!ws || wsDuration <= 0) return
     const ratio = Math.max(0, Math.min(1, midiTime / wsDuration))
     ws.seekTo(ratio)
+  }
+
+  const clearPlaybackClaim = () => {
+    releasePlaybackClaim?.()
+    releasePlaybackClaim = undefined
+  }
+
+  const claimCurrentPlayback = () => {
+    clearPlaybackClaim()
+    const release = claimPlayback(stopAll)
+    releasePlaybackClaim = release
+    return release
+  }
+
+  const releaseIfCurrent = (release: () => void) => {
+    if (releasePlaybackClaim === release) {
+      release()
+      releasePlaybackClaim = undefined
+    }
   }
 
   onMount(() => {
@@ -101,7 +122,9 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
           setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
           if (props.autoPlay) {
             audio.volume = volume()
+            const release = claimCurrentPlayback()
             void audio.play().catch((error: any) => {
+              releaseIfCurrent(release)
               logPlayback(`media autoplay failed: src=${audio.currentSrc}; error=${error?.message || String(error)}`)
               setPlayError(error?.message || '原音播放失败')
             })
@@ -113,6 +136,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         const onEnded = () => {
           setPlaying(false)
           setCurrentTime(0)
+          clearPlaybackClaim()
         }
         const onError = () => {
           const mediaError = audio.error
@@ -157,7 +181,11 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         if (activeTab() === 'original') setDuration(wsDuration)
         if (props.autoPlay && activeTab() === 'original') {
           ws!.setVolume(volume())
-          void ws!.play().catch((error: any) => setPlayError(error?.message || '原音播放失败'))
+          const release = claimCurrentPlayback()
+          void ws!.play().catch((error: any) => {
+            releaseIfCurrent(release)
+            setPlayError(error?.message || '原音播放失败')
+          })
         }
       })
       ws.on('error', (error: any) => setPlayError(error?.message || String(error)))
@@ -175,6 +203,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
       })
       ws.on('finish', () => {
         if (activeTab() === 'original') setPlaying(false)
+        clearPlaybackClaim()
       })
     }
 
@@ -192,6 +221,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
             setPlaying(false)
             setCurrentTime(0)
             syncWaveformCursor(0)
+            clearPlaybackClaim()
           }
         })
         void MidiSynth.preloadInstruments(perfSynth.parsed.tracks.map((t) => t.program)).catch(() => undefined)
@@ -220,6 +250,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
             setPlaying(false)
             setCurrentTime(0)
             syncWaveformCursor(0)
+            clearPlaybackClaim()
           }
         })
         void MidiSynth.preloadInstruments(scoreSynth.parsed.tracks.map((t) => t.program)).catch(() => undefined)
@@ -233,6 +264,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
   })
 
   onCleanup(() => {
+    stopAll()
     audioCleanup?.()
     ws?.destroy()
     perfSynth.dispose()
@@ -245,6 +277,16 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
     if (perfSynth.playing) perfSynth.pause()
     if (scoreSynth.playing) scoreSynth.pause()
     setPlaying(false)
+    clearPlaybackClaim()
+  }
+
+  const stopAll = () => {
+    audioRef?.pause()
+    ws?.pause()
+    perfSynth.stop()
+    scoreSynth.stop()
+    setPlaying(false)
+    clearPlaybackClaim()
   }
 
   const switchTab = (tab: Tab) => {
@@ -313,9 +355,11 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
       if (props.compact && audioRef) {
         audioRef.volume = volume()
         if (audioRef.paused) {
+          const release = claimCurrentPlayback()
           try {
             await audioRef.play()
           } catch (error: any) {
+            releaseIfCurrent(release)
             logPlayback(`media play failed: src=${audioRef.currentSrc}; error=${error?.message || String(error)}`)
             setPlayError(error?.message || '原音播放失败')
           }
@@ -324,18 +368,32 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         }
       } else if (ws) {
         ws.setVolume(volume())
-        ws.playPause()
+        if (ws.isPlaying()) {
+          pauseAll()
+        } else {
+          const release = claimCurrentPlayback()
+          try {
+            await ws.play()
+            if (releasePlaybackClaim !== release) return
+          } catch (error: any) {
+            releaseIfCurrent(release)
+            setPlayError(error?.message || '原音播放失败')
+          }
+        }
       }
     } else {
       const synth = activeSynth()
+      const release = claimCurrentPlayback()
       synth.initAudioContext()
       try {
         await synth.play(synth.getCurrentTime())
       } catch (error: any) {
+        releaseIfCurrent(release)
         logPlayback(`MIDI play failed: tab=${tab}; error=${error?.message || String(error)}`)
         setPlayError(error?.message || '音色加载失败，请检查网络连接后重试')
         return
       }
+      if (releasePlaybackClaim !== release || !synth.playing) return
       synth.setVolume(volume())
       if (tab === 'score') {
         scoreTrackEnabled().forEach((enabled, i) => synth.setTrackEnabled(i, enabled))

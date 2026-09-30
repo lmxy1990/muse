@@ -1,6 +1,7 @@
 import { onMount, onCleanup, createSignal } from 'solid-js'
 import WaveSurfer from 'wavesurfer.js'
 import { Play, Pause, SkipBack, SkipForward, Volume2 } from 'lucide-solid'
+import { claimPlayback } from '../lib/playbackManager'
 
 interface WaveformPlayerProps {
   audioUrl: string
@@ -14,6 +15,7 @@ export default function WaveformPlayer(props: WaveformPlayerProps) {
   const [currentTime, setCurrentTime] = createSignal(0)
   const [duration, setDuration] = createSignal(0)
   const [volume, setVolume] = createSignal(0.8)
+  let releasePlaybackClaim: (() => void) | undefined
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60)
@@ -50,13 +52,43 @@ export default function WaveformPlayer(props: WaveformPlayerProps) {
       props.onTimeUpdate?.(t)
     })
     ws.on('play', () => setPlaying(true))
-    ws.on('pause', () => setPlaying(false))
-    ws.on('finish', () => setPlaying(false))
+    ws.on('pause', () => {
+      setPlaying(false)
+      releasePlaybackClaim?.()
+      releasePlaybackClaim = undefined
+    })
+    ws.on('finish', () => {
+      setPlaying(false)
+      releasePlaybackClaim?.()
+      releasePlaybackClaim = undefined
+    })
   })
 
-  onCleanup(() => ws?.destroy())
+  onCleanup(() => {
+    ws?.pause()
+    releasePlaybackClaim?.()
+    releasePlaybackClaim = undefined
+    ws?.destroy()
+  })
 
-  const togglePlay = () => ws?.playPause()
+  const togglePlay = async () => {
+    if (!ws) return
+    if (ws.isPlaying()) {
+      ws.pause()
+      return
+    }
+    releasePlaybackClaim?.()
+    const release = claimPlayback(() => ws?.pause())
+    releasePlaybackClaim = release
+    try {
+      await ws.play()
+    } catch {
+      if (releasePlaybackClaim === release) {
+        release()
+        releasePlaybackClaim = undefined
+      }
+    }
+  }
   const skipBack = () => ws?.skip(-5)
   const skipForward = () => ws?.skip(5)
 

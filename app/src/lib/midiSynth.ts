@@ -108,7 +108,11 @@ export class MidiSynth {
   private onTimeUpdate?: (time: number) => void
   private onEnd?: () => void
   private _playbackNotes: MidiNote[] = []
+  private _scheduledStops: Array<() => void> = []
   private _scheduledThrough = 0
+  private _playGeneration = 0
+  private _volume = 0.8
+  private _audioVersion = 0
 
   parsed: ParsedMidi = { notes: [], tracks: [], duration: 0, tempo: 120, ppq: 480, tempoEventCount: 0 }
 
@@ -117,7 +121,7 @@ export class MidiSynth {
   get duration() { return this.parsed.duration }
 
   async loadFile(path: string) {
-    this.stopNotes()
+    this.stop()
     this.disposeAudio()
     this._parsed = false
     this._audioReady = false
@@ -139,47 +143,64 @@ export class MidiSynth {
       await this._audioLoading
       return
     }
-    if (!this.ctx) return
+    const context = this.ctx
+    if (!context) return
+    const audioVersion = this._audioVersion
 
-    this._audioLoading = (async () => {
-      this.masterGain = this.ctx!.createGain()
-      this.masterGain.gain.value = 0.4
-      this.masterGain.connect(this.ctx!.destination)
+    const loading = (async () => {
+      const masterGain = context.createGain()
+      masterGain.gain.value = this._volume * 0.4
+      masterGain.connect(context.destination)
 
       const trackCount = Math.max(1, this.parsed.tracks.length)
-      this.trackGains = Array.from({ length: trackCount }, () => {
-        const g = this.ctx!.createGain()
+      const trackGains = Array.from({ length: trackCount }, () => {
+        const g = context.createGain()
         g.gain.value = 1
-        g.connect(this.masterGain!)
+        g.connect(masterGain)
         return g
       })
 
-      this.instruments = []
+      const instruments: Soundfont[] = []
       for (let i = 0; i < trackCount; i++) {
         const program = this.parsed.tracks[i]?.program ?? 0
         const name = gmInstrumentName(program)
         let sf: Soundfont
         try {
-          sf = new Soundfont(this.ctx!, { instrument: name, destination: this.trackGains[i], storage: getSfCache() })
+          sf = new Soundfont(context, { instrument: name, destination: trackGains[i], storage: getSfCache() })
           await sf.loaded()
         } catch {
-          sf = new Soundfont(this.ctx!, { instrument: 'acoustic_grand_piano', destination: this.trackGains[i], storage: getSfCache() })
+          sf = new Soundfont(context, { instrument: 'acoustic_grand_piano', destination: trackGains[i], storage: getSfCache() })
           await sf.loaded()
         }
-        this.instruments.push(sf)
+        instruments.push(sf)
       }
 
+      if (this.ctx !== context || this._audioVersion !== audioVersion) {
+        for (const instrument of instruments) instrument.disconnect()
+        masterGain.disconnect()
+        return
+      }
+
+      this.masterGain = masterGain
+      this.trackGains = trackGains
+      this.instruments = instruments
       this._audioReady = true
     })()
+    this._audioLoading = loading
 
-    await this._audioLoading
+    try {
+      await loading
+    } finally {
+      if (this._audioLoading === loading) this._audioLoading = null
+    }
   }
 
   setOnTimeUpdate(cb: (time: number) => void) { this.onTimeUpdate = cb }
   setOnEnd(cb: () => void) { this.onEnd = cb }
 
   setVolume(v: number) {
-    if (this.masterGain) this.masterGain.gain.value = v * 0.4
+    this._volume = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0))
+    if (this.masterGain) this.masterGain.gain.value = this._volume * 0.4
   }
 
   setTrackEnabled(track: number, enabled: boolean) {
@@ -190,8 +211,9 @@ export class MidiSynth {
 
   async play(fromTime = 0) {
     if (!this._parsed) return
+    const generation = ++this._playGeneration
     await this.ensureAudio()
-    if (!this.ctx || !this._audioReady) return
+    if (generation !== this._playGeneration || !this.ctx || !this._audioReady) return
     this.stopNotes()
 
     if (this.ctx.state === 'suspended') {
@@ -221,12 +243,13 @@ export class MidiSynth {
       const instrument = this.instruments[note.track] || this.instruments[0]
       const start = now + (note.startTime - elapsed)
       const dur = note.endTime - note.startTime
-      instrument.start({
+      const stop = instrument.start({
         note: note.pitch,
         velocity: note.velocity,
         time: Math.max(now, start),
         duration: dur,
       })
+      this._scheduledStops.push(stop)
     }
     this._scheduledThrough = scheduleUntil
   }
@@ -247,6 +270,7 @@ export class MidiSynth {
   pause() {
     if (!this._playing || !this.ctx) return
     this.pausedAt = this.ctx.currentTime - this.startedAt
+    this._playGeneration++
     this.stopNotes()
   }
 
@@ -261,17 +285,27 @@ export class MidiSynth {
     cancelAnimationFrame(this.rafId)
     this._playbackNotes = []
     this._scheduledThrough = 0
+    for (const stop of this._scheduledStops) {
+      try {
+        stop()
+      } catch {
+        // A soundfont may already have been disconnected during teardown.
+      }
+    }
+    this._scheduledStops = []
     for (const inst of this.instruments) {
       inst.stop()
     }
   }
 
   stop() {
+    this._playGeneration++
     this.stopNotes()
     this.pausedAt = 0
   }
 
   private disposeAudio() {
+    this._audioVersion++
     for (const inst of this.instruments) {
       inst.disconnect()
     }
@@ -287,7 +321,7 @@ export class MidiSynth {
   }
 
   dispose() {
-    this.stopNotes()
+    this.stop()
     this.disposeAudio()
   }
 
@@ -298,6 +332,7 @@ export class MidiSynth {
 
   seekTo(time: number) {
     const wasPlaying = this._playing
+    this._playGeneration++
     this.stopNotes()
     this.pausedAt = time
     if (wasPlaying) this.play(time)
