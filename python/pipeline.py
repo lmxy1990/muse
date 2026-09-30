@@ -376,6 +376,20 @@ def extract_metadata_from_midi(midi_path):
     return metadata
 
 
+def _unique_output_path(path):
+    """Return a non-conflicting output path without overwriting an existing MIDI."""
+    if not os.path.exists(path):
+        return path
+
+    root, extension = os.path.splitext(path)
+    index = 1
+    while True:
+        candidate = f"{root} ({index}){extension}"
+        if not os.path.exists(candidate):
+            return candidate
+        index += 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="audio2sheets pipeline")
     parser.add_argument("input", help="Audio file path")
@@ -386,8 +400,8 @@ def main():
 
     try:
         base = os.path.splitext(args.input)[0]
-        midi_copy = base + ".mid"
-        perf_copy = base + ".perf.mid"
+        midi_copy = _unique_output_path(base + ".mid")
+        perf_copy = _unique_output_path(base + ".perf.mid")
 
         if args.backend == "yourmt3":
             yourmt3_midi = transcribe_yourmt3(args.input)

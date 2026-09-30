@@ -1,7 +1,8 @@
 import { createSignal, Show, For, onMount, onCleanup } from 'solid-js'
 import WaveSurfer from 'wavesurfer.js'
 import { MidiSynth } from '../lib/midiSynth'
-import { Play, Pause, SkipBack, SkipForward, Music } from 'lucide-solid'
+import { logPlayback } from '../lib/playbackAdapter'
+import { Play, Pause, SkipBack, SkipForward, Music, Volume2 } from 'lucide-solid'
 
 type Tab = 'original' | 'perf' | 'score'
 
@@ -10,6 +11,10 @@ interface PlaybackPanelProps {
   scoreMidiPath: string | null
   perfMidiPath: string | null
   instruments?: string[]
+  initialTab?: Tab
+  compact?: boolean
+  autoPlay?: boolean
+  displayName?: string
 }
 
 const TRACK_COLORS = [
@@ -38,6 +43,8 @@ const formatTime = (s: number) => {
 
 export default function PlaybackPanel(props: PlaybackPanelProps) {
   let waveformRef: HTMLDivElement | undefined
+  let audioRef: HTMLAudioElement | undefined
+  let audioCleanup: (() => void) | undefined
   let ws: WaveSurfer | undefined
 
   const perfSynth = new MidiSynth()
@@ -51,16 +58,19 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
     return tabs
   }
 
-  const defaultTab = () => props.scoreMidiPath
-    ? 'score' as Tab
-    : props.perfMidiPath
-      ? 'perf' as Tab
-      : 'original' as Tab
+  const defaultTab = () => props.initialTab || (props.audioUrl
+    ? 'original' as Tab
+    : props.scoreMidiPath
+      ? 'score' as Tab
+      : props.perfMidiPath
+        ? 'perf' as Tab
+        : 'original' as Tab)
   const [activeTab, setActiveTab] = createSignal<Tab>(defaultTab())
 
   const [playing, setPlaying] = createSignal(false)
   const [currentTime, setCurrentTime] = createSignal(0)
   const [duration, setDuration] = createSignal(0)
+  const [volume, setVolume] = createSignal(0.8)
 
   const [perfLoaded, setPerfLoaded] = createSignal(false)
   const [scoreLoaded, setScoreLoaded] = createSignal(false)
@@ -73,6 +83,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
   const [scoreTrackCounts, setScoreTrackCounts] = createSignal<number[]>([])
 
   const [wsReady, setWsReady] = createSignal(false)
+  const [audioReady, setAudioReady] = createSignal(false)
   let wsDuration = 0
 
   const syncWaveformCursor = (midiTime: number) => {
@@ -82,7 +93,51 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
   }
 
   onMount(() => {
-    if (waveformRef) {
+    if (props.compact) {
+      const audio = audioRef
+      if (audio && props.audioUrl) {
+        const onLoadedMetadata = () => {
+          setAudioReady(true)
+          setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+          if (props.autoPlay) {
+            audio.volume = volume()
+            void audio.play().catch((error: any) => {
+              logPlayback(`media autoplay failed: src=${audio.currentSrc}; error=${error?.message || String(error)}`)
+              setPlayError(error?.message || '原音播放失败')
+            })
+          }
+        }
+        const onTimeUpdate = () => setCurrentTime(audio.currentTime)
+        const onPlay = () => setPlaying(true)
+        const onPause = () => setPlaying(false)
+        const onEnded = () => {
+          setPlaying(false)
+          setCurrentTime(0)
+        }
+        const onError = () => {
+          const mediaError = audio.error
+          logPlayback(`media load failed: src=${audio.currentSrc}; code=${mediaError?.code || 'unknown'}; message=${mediaError?.message || 'unknown'}`)
+          setPlayError('原音加载失败，请检查音频文件')
+        }
+
+        audio.addEventListener('loadedmetadata', onLoadedMetadata)
+        audio.addEventListener('timeupdate', onTimeUpdate)
+        audio.addEventListener('play', onPlay)
+        audio.addEventListener('pause', onPause)
+        audio.addEventListener('ended', onEnded)
+        audio.addEventListener('error', onError)
+        audio.load()
+        audioCleanup = () => {
+          audio.pause()
+          audio.removeEventListener('loadedmetadata', onLoadedMetadata)
+          audio.removeEventListener('timeupdate', onTimeUpdate)
+          audio.removeEventListener('play', onPlay)
+          audio.removeEventListener('pause', onPause)
+          audio.removeEventListener('ended', onEnded)
+          audio.removeEventListener('error', onError)
+        }
+      }
+    } else if (waveformRef) {
       ws = WaveSurfer.create({
         container: waveformRef,
         waveColor: 'rgba(139, 92, 246, 0.3)',
@@ -92,7 +147,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         barWidth: 2,
         barGap: 1,
         barRadius: 2,
-        height: 56,
+        height: props.compact ? 32 : 56,
         normalize: true,
       })
       if (props.audioUrl) ws.load(props.audioUrl)
@@ -100,7 +155,12 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         setWsReady(true)
         wsDuration = ws!.getDuration()
         if (activeTab() === 'original') setDuration(wsDuration)
+        if (props.autoPlay && activeTab() === 'original') {
+          ws!.setVolume(volume())
+          void ws!.play().catch((error: any) => setPlayError(error?.message || '原音播放失败'))
+        }
       })
+      ws.on('error', (error: any) => setPlayError(error?.message || String(error)))
       ws.on('audioprocess', (t: number) => {
         if (activeTab() === 'original') setCurrentTime(t)
       })
@@ -136,7 +196,11 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         })
         void MidiSynth.preloadInstruments(perfSynth.parsed.tracks.map((t) => t.program)).catch(() => undefined)
         if (activeTab() === 'perf') setDuration(perfSynth.duration)
-      }).catch((e: any) => setPerfError(e?.message || String(e)))
+        if (props.autoPlay && activeTab() === 'perf') void togglePlay()
+      }).catch((e: any) => {
+        logPlayback(`performance MIDI load failed: path=${props.perfMidiPath}; error=${e?.message || String(e)}`)
+        setPerfError(e?.message || String(e))
+      })
     }
 
     if (props.scoreMidiPath) {
@@ -160,17 +224,23 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         })
         void MidiSynth.preloadInstruments(scoreSynth.parsed.tracks.map((t) => t.program)).catch(() => undefined)
         if (activeTab() === 'score') setDuration(scoreSynth.duration)
-      }).catch((e: any) => setScoreError(e?.message || String(e)))
+        if (props.autoPlay && activeTab() === 'score') void togglePlay()
+      }).catch((e: any) => {
+        logPlayback(`score MIDI load failed: path=${props.scoreMidiPath}; error=${e?.message || String(e)}`)
+        setScoreError(e?.message || String(e))
+      })
     }
   })
 
   onCleanup(() => {
+    audioCleanup?.()
     ws?.destroy()
     perfSynth.dispose()
     scoreSynth.dispose()
   })
 
   const pauseAll = () => {
+    audioRef?.pause()
     ws?.pause()
     if (perfSynth.playing) perfSynth.pause()
     if (scoreSynth.playing) scoreSynth.pause()
@@ -197,16 +267,39 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
 
   const activeSynth = () => activeTab() === 'perf' ? perfSynth : scoreSynth
 
+  const seekToTime = (requestedTime: number) => {
+    const total = duration()
+    const time = Math.max(0, Math.min(total > 0 ? total : requestedTime, requestedTime))
+    const tab = activeTab()
+
+    if (tab === 'original') {
+      if (props.compact && audioRef) {
+        audioRef.currentTime = time
+        setCurrentTime(time)
+      } else if (ws) {
+        const waveDuration = ws.getDuration()
+        if (waveDuration > 0) ws.seekTo(time / waveDuration)
+        setCurrentTime(time)
+      }
+      return
+    }
+
+    const synth = activeSynth()
+    synth.seekTo(time)
+    setCurrentTime(time)
+    syncWaveformCursor(time)
+  }
+
+  const handleProgressInput = (event: InputEvent) => {
+    seekToTime(Number((event.currentTarget as HTMLInputElement).value))
+  }
+
   const handleWaveformClick = (e: MouseEvent) => {
     const tab = activeTab()
     if (tab === 'original' || !waveformRef) return
     const rect = waveformRef!.getBoundingClientRect()
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    const synth = activeSynth()
-    const t = pct * synth.duration
-    synth.seekTo(t)
-    setCurrentTime(t)
-    syncWaveformCursor(t)
+    seekToTime(pct * activeSynth().duration)
   }
 
   const togglePlay = async () => {
@@ -216,18 +309,34 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
       pauseAll()
       return
     }
-    if (tab === 'original' && ws) {
-      ws.playPause()
+    if (tab === 'original') {
+      if (props.compact && audioRef) {
+        audioRef.volume = volume()
+        if (audioRef.paused) {
+          try {
+            await audioRef.play()
+          } catch (error: any) {
+            logPlayback(`media play failed: src=${audioRef.currentSrc}; error=${error?.message || String(error)}`)
+            setPlayError(error?.message || '原音播放失败')
+          }
+        } else {
+          audioRef.pause()
+        }
+      } else if (ws) {
+        ws.setVolume(volume())
+        ws.playPause()
+      }
     } else {
       const synth = activeSynth()
       synth.initAudioContext()
       try {
         await synth.play(synth.getCurrentTime())
       } catch (error: any) {
+        logPlayback(`MIDI play failed: tab=${tab}; error=${error?.message || String(error)}`)
         setPlayError(error?.message || '音色加载失败，请检查网络连接后重试')
         return
       }
-      synth.setVolume(0.8)
+      synth.setVolume(volume())
       if (tab === 'score') {
         scoreTrackEnabled().forEach((enabled, i) => synth.setTrackEnabled(i, enabled))
       }
@@ -273,7 +382,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
 
   const isReady = () => {
     const tab = activeTab()
-    if (tab === 'original') return wsReady()
+    if (tab === 'original') return props.compact ? audioReady() : wsReady()
     if (tab === 'perf') return perfLoaded()
     return scoreLoaded()
   }
@@ -287,22 +396,108 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
 
   const loading = () => {
     const tab = activeTab()
-    if (tab === 'original') return !wsReady()
+    if (tab === 'original') return props.compact ? !audioReady() : !wsReady()
     if (tab === 'perf') return !perfLoaded()
     return !scoreLoaded()
   }
 
   const showTracks = () => activeTab() === 'score' && scoreTrackNames().length > 1
 
+  const updateVolume = (event: InputEvent) => {
+    const value = Number((event.currentTarget as HTMLInputElement).value)
+    setVolume(value)
+    if (audioRef) audioRef.volume = value
+    ws?.setVolume(value)
+    perfSynth.setVolume(value)
+    scoreSynth.setVolume(value)
+  }
+
+  const progressPercent = () => duration() > 0
+    ? Math.min(100, Math.max(0, currentTime() / duration() * 100))
+    : 0
+
+  const renderProgressBar = () => (
+    <div class="relative h-3 w-full" title="点击或拖动调整播放进度">
+      <div class="absolute left-0 right-0 top-1 h-1 rounded-full bg-white/10 overflow-hidden">
+        <div
+          class="h-full rounded-full transition-[width] duration-100"
+          style={{ width: `${progressPercent()}%`, background: color() }}
+        />
+      </div>
+      <input
+        type="range"
+        min="0"
+        max={Math.max(1, duration())}
+        step="0.01"
+        value={Math.min(currentTime(), duration())}
+        onInput={handleProgressInput}
+        disabled={!isReady() || duration() <= 0 || !!activeError()}
+        class="absolute inset-0 h-3 w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+        aria-label="播放进度"
+      />
+    </div>
+  )
+
+  const playbackStatus = () => {
+    if (activeError() || playError()) return '播放失败'
+    if (loading()) return '加载中'
+    return playing() ? '正在播放' : '已暂停'
+  }
+
+  if (props.compact) {
+    return (
+      <div class="relative flex items-center gap-3 w-full min-w-0 pb-1">
+        <Show when={props.audioUrl}>
+          <audio ref={audioRef} src={props.audioUrl || undefined} preload="metadata" class="hidden" />
+        </Show>
+        <button
+          type="button"
+          onClick={() => void togglePlay()}
+          disabled={!isReady() || !!activeError()}
+          title={playing() ? '暂停' : '播放'}
+          class="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
+          style={{ background: color() }}
+        >
+          {playing() ? <Pause class="w-4 h-4 text-white" /> : <Play class="w-4 h-4 text-white ml-0.5" />}
+        </button>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-xs font-medium text-text-primary">{props.displayName || '未选择文件'}</p>
+          <p class="text-[11px] text-text-secondary mt-0.5">{playbackStatus()}</p>
+        </div>
+        <Show when={activeError() || playError()}>
+          <span class="hidden sm:block max-w-52 truncate text-[11px] text-red-300" title={activeError() || playError() || ''}>
+            {activeError() || playError()}
+          </span>
+        </Show>
+        <label class="flex items-center gap-2 flex-shrink-0" title="音量">
+          <Volume2 class="w-4 h-4 text-text-secondary" />
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume()}
+            onInput={updateVolume}
+            class="w-20 sm:w-28 accent-accent"
+            aria-label="音量"
+          />
+        </label>
+        <div class="absolute left-0 right-0 bottom-0">
+          {renderProgressBar()}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div class="flex flex-col gap-5 w-full max-w-lg mx-auto">
+    <div class={`flex flex-col ${props.compact ? 'gap-2' : 'gap-5'} w-full max-w-lg mx-auto`}>
       <div class="flex items-center justify-center">
         <div class="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }}>
           <For each={availableTabs()}>
             {(tab) => (
               <button
                 onClick={() => switchTab(tab)}
-                class="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
+                class={`px-4 ${props.compact ? 'py-1' : 'py-1.5'} rounded-lg text-sm font-medium transition-all`}
                 style={{
                   background: activeTab() === tab ? `${TAB_COLOR[tab]}20` : 'transparent',
                   color: activeTab() === tab ? TAB_COLOR[tab] : 'rgba(255,255,255,0.4)',
@@ -331,24 +526,26 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
         </div>
       </Show>
 
-      <div class="flex items-center justify-between text-xs text-text-secondary px-1 -mt-3">
+      <div class={`flex items-center justify-between text-xs text-text-secondary px-1 ${props.compact ? '-mt-1' : '-mt-3'}`}>
         <span>{formatTime(currentTime())}</span>
         <span>{formatTime(duration())}</span>
       </div>
 
-      <div class="flex items-center gap-6 justify-center">
+      {renderProgressBar()}
+
+      <div class={`flex items-center ${props.compact ? 'gap-4' : 'gap-6'} justify-center`}>
         <button onClick={skipBack} class="p-2 rounded-full transition-colors hover:bg-white/5">
           <SkipBack class="w-5 h-5 text-text-secondary" />
         </button>
         <button
           onClick={togglePlay}
           disabled={!isReady() || !!activeError()}
-          class="w-14 h-14 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
+          class={`${props.compact ? 'w-10 h-10' : 'w-14 h-14'} rounded-full flex items-center justify-center transition-colors disabled:opacity-40`}
           style={{ background: color() }}
         >
           {playing()
-            ? <Pause class="w-6 h-6 text-white" />
-            : <Play class="w-6 h-6 text-white ml-0.5" />
+            ? <Pause class={`${props.compact ? 'w-5 h-5' : 'w-6 h-6'} text-white`} />
+            : <Play class={`${props.compact ? 'w-5 h-5' : 'w-6 h-6'} text-white ml-0.5`} />
           }
         </button>
         <button onClick={skipForward} class="p-2 rounded-full transition-colors hover:bg-white/5">

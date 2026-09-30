@@ -1,6 +1,6 @@
-import { readFile } from '@tauri-apps/plugin-fs'
 import { Soundfont, CacheStorage } from 'smplr'
 import { parseMidiBytes } from './parseMidi'
+import { readPlaybackBytes } from './playbackAdapter'
 import type { MidiNote, ParsedMidi } from './parseMidi'
 
 let _sfCache: CacheStorage | undefined
@@ -122,8 +122,8 @@ export class MidiSynth {
     this._parsed = false
     this._audioReady = false
 
-    const bytes = await readFile(path)
-    this.parsed = parseMidiBytes(new Uint8Array(bytes))
+    const bytes = await readPlaybackBytes(path)
+    this.parsed = parseMidiBytes(bytes)
     this._parsed = true
   }
 

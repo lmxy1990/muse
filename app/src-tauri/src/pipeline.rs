@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tauri::{AppHandle, Emitter};
 
@@ -203,14 +207,36 @@ pub async fn start_pipeline(
 }
 
 #[tauri::command]
-pub fn save_recording(bytes: Vec<u8>) -> Result<String, String> {
-    let tmp = std::env::temp_dir().join(format!(
-        "muse_recording_{}.wav",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
-    ));
-    std::fs::write(&tmp, &bytes).map_err(|e| format!("Failed to save recording: {}", e))?;
-    Ok(tmp.to_string_lossy().to_string())
+pub fn prepare_playback_file(path: String) -> Result<String, String> {
+    log_pipeline(format!("Playback prepare started: source={path}"));
+    let source = PathBuf::from(&path);
+    if !source.is_file() {
+        log_pipeline(format!("Playback prepare failed: file not found: {path}"));
+        return Err(format!("Playback file not found: {path}"));
+    }
+
+    let file_name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("playback.bin");
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    let playback_dir = std::env::temp_dir().join("muse-playback");
+    if let Err(error) = fs::create_dir_all(&playback_dir) {
+        log_pipeline(format!("Playback prepare failed: create directory: {error}"));
+        return Err(format!("Failed to create playback directory: {error}"));
+    }
+    let destination = playback_dir.join(format!("{:x}-{file_name}", hasher.finish()));
+    if let Err(error) = fs::copy(&source, &destination) {
+        log_pipeline(format!("Playback prepare failed: copy to {}: {error}", destination.display()));
+        return Err(format!("Failed to prepare playback file: {error}"));
+    }
+    let prepared = destination.to_string_lossy().to_string();
+    log_pipeline(format!("Playback prepare completed: prepared={prepared}"));
+    Ok(prepared)
+}
+
+#[tauri::command]
+pub fn log_playback_event(message: String) {
+    log_pipeline(format!("Playback: {message}"));
 }

@@ -2,6 +2,7 @@ import { Show } from 'solid-js'
 import { Download } from 'lucide-solid'
 import { save } from '@tauri-apps/plugin-dialog'
 import { copyFile } from '@tauri-apps/plugin-fs'
+import { preparePlaybackPath } from '../lib/playbackAdapter'
 
 interface ExportBarProps {
   inputName: string
@@ -18,7 +19,7 @@ export default function ExportBar(props: ExportBarProps) {
       filters: [{ name: 'MIDI', extensions: ['mid', 'midi'] }],
     })
     if (path) {
-      await copyFile(props.midiPath, path)
+      await copyFile(await preparePlaybackPath(props.midiPath), path)
     }
   }
 

@@ -13,7 +13,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             pipeline::start_pipeline,
-            pipeline::save_recording,
+            pipeline::prepare_playback_file,
+            pipeline::log_playback_event,
             setup::get_environment_status,
             setup::retry_environment_setup,
         ])
