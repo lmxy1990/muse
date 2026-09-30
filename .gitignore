@@ -11,6 +11,7 @@ mp3_files/
 *.mp3
 app/src-tauri/target/
 app/src-tauri/gen/
+artifacts/
 tests/browser/*.bundle.js
 yourmt3/
 .claude/

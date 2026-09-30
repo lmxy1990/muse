@@ -142,8 +142,13 @@ cd muse/app
 npm install
 
 npm run dev          # Vite dev server + Tauri window
-npm run tauri build  # Production build → app/src-tauri/target/release/bundle/
+npm run tauri build  # Build; intermediate files stay under app/src-tauri/target/
+
+# Windows: build and copy the final installer to ../artifacts/
+npm run build:windows
 ```
+
+Release scripts also copy the final Linux and macOS packages to the repository root `artifacts/` directory. The nested `app/src-tauri/target/` directory is only used for build intermediates.
 
 The Python environment is created automatically at `~/.audio2sheets/venv/` on first run. To set it up manually:
 

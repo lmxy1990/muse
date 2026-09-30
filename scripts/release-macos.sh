@@ -99,11 +99,17 @@ fi
 DMG_NAME="$(basename "$DMG_PATH")"
 echo "Found DMG: $DMG_PATH"
 
+ARTIFACTS_DIR="$REPO_ROOT/artifacts"
+mkdir -p "$ARTIFACTS_DIR"
+ARTIFACT_PATH="$ARTIFACTS_DIR/Muse-${CURRENT_VERSION}-macos-${ARCH}.dmg"
+cp "$DMG_PATH" "$ARTIFACT_PATH"
+echo "Copied DMG to $ARTIFACT_PATH"
+
 echo ""
 echo "==> Step 4: Publish to GitHub"
 if gh release view "v$CURRENT_VERSION" --repo "$RELEASE_REPO" &>/dev/null; then
   echo "Release v$CURRENT_VERSION exists, uploading asset..."
-  gh release upload "v$CURRENT_VERSION" --repo "$RELEASE_REPO" --clobber "$DMG_PATH"
+  gh release upload "v$CURRENT_VERSION" --repo "$RELEASE_REPO" --clobber "$ARTIFACT_PATH"
 else
   NOTES="$(git -C "$REPO_ROOT" log --oneline \
     "$(git -C "$REPO_ROOT" describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo HEAD~10)..HEAD" \
@@ -111,7 +117,7 @@ else
   gh release create "v$CURRENT_VERSION" --repo "$RELEASE_REPO" \
     --title "v$CURRENT_VERSION" \
     --notes "$NOTES" \
-    "$DMG_PATH"
+    "$ARTIFACT_PATH"
 fi
 
 echo ""
