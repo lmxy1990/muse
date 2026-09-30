@@ -220,7 +220,7 @@ def separate_piano_stem(audio_path):
     return piano_path
 
 
-def transcribe_audio(audio_path, solo_piano=False):
+def transcribe_audio(audio_path, solo_piano=False, include_score=True):
     audio_path = os.path.abspath(audio_path)
     _configure_audio_tools()
 
@@ -257,7 +257,7 @@ def transcribe_audio(audio_path, solo_piano=False):
 
     progress("transcribing", 65)
 
-    score_midi_path = split_hands(raw_midi_path)
+    score_midi_path = split_hands(raw_midi_path) if include_score else None
 
     return score_midi_path, perf_midi_path
 
@@ -395,29 +395,46 @@ def main():
     parser.add_argument("input", help="Audio file path")
     parser.add_argument("--backend", choices=["transkun", "yourmt3"], default="transkun")
     parser.add_argument("--solo-piano", action="store_true", help="Skip Demucs separation (input is solo piano)")
+    parser.add_argument("--score-midi", action="store_true", help="Write the score MIDI output")
+    parser.add_argument("--performance-midi", action="store_true", help="Write the performance MIDI output")
     parser.add_argument("--diagnostics", action="store_true", help="Write quantization diagnostics JSON")
     args = parser.parse_args()
 
     try:
         base = os.path.splitext(args.input)[0]
-        midi_copy = _unique_output_path(base + ".mid")
-        perf_copy = _unique_output_path(base + ".perf.mid")
+        explicit_outputs = args.score_midi or args.performance_midi
+        include_score = args.score_midi or not explicit_outputs
+        include_performance = args.performance_midi or not explicit_outputs
+        if not include_score and not include_performance:
+            raise RuntimeError("At least one MIDI output must be selected.")
+
+        midi_copy = _unique_output_path(base + "-乐谱版.mid") if include_score else None
+        perf_copy = _unique_output_path(base + "-演奏版.mid") if include_performance else None
 
         if args.backend == "yourmt3":
             yourmt3_midi = transcribe_yourmt3(args.input)
-            shutil.copy2(yourmt3_midi, midi_copy)
-            shutil.copy2(yourmt3_midi, perf_copy)
+            if midi_copy:
+                shutil.copy2(yourmt3_midi, midi_copy)
+            if perf_copy:
+                shutil.copy2(yourmt3_midi, perf_copy)
             metadata = extract_metadata_from_midi(yourmt3_midi)
         else:
             if not args.solo_piano:
                 progress("separating", 0)
 
-            score_midi_path, perf_midi_path = transcribe_audio(args.input, solo_piano=args.solo_piano)
-            shutil.copy2(score_midi_path, midi_copy)
-            shutil.copy2(perf_midi_path, perf_copy)
-            metadata = extract_metadata_from_midi(score_midi_path)
+            score_midi_path, perf_midi_path = transcribe_audio(
+                args.input,
+                solo_piano=args.solo_piano,
+                include_score=include_score,
+            )
+            if midi_copy:
+                shutil.copy2(score_midi_path, midi_copy)
+            if perf_copy:
+                shutil.copy2(perf_midi_path, perf_copy)
+            metadata_path = score_midi_path if include_score else perf_midi_path
+            metadata = extract_metadata_from_midi(metadata_path)
 
-            if args.diagnostics:
+            if args.diagnostics and midi_copy and perf_copy:
                 diag_path = base + ".diagnostics.json"
                 _write_diagnostics(perf_copy, midi_copy, diag_path)
 

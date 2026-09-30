@@ -66,6 +66,8 @@ pub async fn start_pipeline(
     input: String,
     backend: Option<String>,
     solo_piano: Option<bool>,
+    score_midi: Option<bool>,
+    performance_midi: Option<bool>,
 ) -> Result<PipelineResult, String> {
     let venv_python = ensure_environment(&app, |percent| {
         let _ = app.emit(
@@ -83,9 +85,11 @@ pub async fn start_pipeline(
     }
 
     log_pipeline(format!(
-        "Starting pipeline: input={input}, backend={}, solo_piano={}",
+        "Starting pipeline: input={input}, backend={}, solo_piano={}, score_midi={}, performance_midi={}",
         backend.as_deref().unwrap_or("transkun"),
-        solo_piano.unwrap_or(false)
+        solo_piano.unwrap_or(false),
+        score_midi.unwrap_or(false),
+        performance_midi.unwrap_or(true)
     ));
 
     let mut args = vec![
@@ -98,6 +102,12 @@ pub async fn start_pipeline(
     }
     if solo_piano.unwrap_or(false) {
         args.push("--solo-piano".to_string());
+    }
+    if score_midi.unwrap_or(false) {
+        args.push("--score-midi".to_string());
+    }
+    if performance_midi.unwrap_or(true) {
+        args.push("--performance-midi".to_string());
     }
 
     let mut pipeline_command = Command::new(venv_python.to_str().unwrap());

@@ -51,6 +51,8 @@ export default function WorkspaceView() {
   const [notice, setNotice] = createSignal<string | null>(null)
   const [playRequest, setPlayRequest] = createSignal(0)
   const [requestedSelection, setRequestedSelection] = createSignal<string | null>(null)
+  const [includeScoreMidi, setIncludeScoreMidi] = createSignal(false)
+  const [includePerformanceMidi, setIncludePerformanceMidi] = createSignal(true)
 
   const outputFiles = createMemo(() => jobs().flatMap((job) => {
     const outputs: Array<{ job: AudioJob; kind: OutputKind; path: string; name: string }> = []
@@ -125,7 +127,13 @@ export default function WorkspaceView() {
         updateJob(job.id, { status: 'processing', progress: 0, error: null })
 
         try {
-          const result = await startPipeline(job.path, backend(), backend() === 'transkun')
+          const result = await startPipeline(
+            job.path,
+            backend(),
+            backend() === 'transkun',
+            includeScoreMidi(),
+            includePerformanceMidi(),
+          )
           updateJob(job.id, {
             status: 'completed',
             progress: 100,
@@ -184,6 +192,28 @@ export default function WorkspaceView() {
             <option value="transkun" style={{ background: '#171522', color: '#f4f1ff' }}>独奏钢琴</option>
             <option value="yourmt3" style={{ background: '#171522', color: '#f4f1ff' }}>多乐器</option>
           </select>
+          <div class="flex items-center gap-2 text-xs text-text-secondary" aria-label="输出 MIDI 类型">
+            <label class="inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeScoreMidi()}
+                disabled={running() || !includePerformanceMidi()}
+                onChange={(event) => setIncludeScoreMidi(event.currentTarget.checked)}
+                class="h-3.5 w-3.5 accent-accent"
+              />
+              乐谱版
+            </label>
+            <label class="inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includePerformanceMidi()}
+                disabled={running() || !includeScoreMidi()}
+                onChange={(event) => setIncludePerformanceMidi(event.currentTarget.checked)}
+                class="h-3.5 w-3.5 accent-accent"
+              />
+              演奏版
+            </label>
+          </div>
           <button
             type="button"
             onClick={runBatch}

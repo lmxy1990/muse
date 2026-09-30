@@ -446,7 +446,7 @@ export default function PlaybackPanel(props: PlaybackPanelProps) {
 
   if (props.compact) {
     return (
-      <div class="relative flex items-center gap-3 w-full min-w-0 pb-1">
+      <div class="relative flex items-center gap-3 w-full min-w-0 pb-4">
         <Show when={props.audioUrl}>
           <audio ref={audioRef} src={props.audioUrl || undefined} preload="metadata" class="hidden" />
         </Show>

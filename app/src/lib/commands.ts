@@ -7,6 +7,18 @@ interface PipelineResultRaw {
   perf_midi_path: string | null
 }
 
-export function startPipeline(input: string, backend = 'transkun', soloPiano = false): Promise<PipelineResultRaw> {
-  return invoke<PipelineResultRaw>('start_pipeline', { input, backend, soloPiano })
+export function startPipeline(
+  input: string,
+  backend = 'transkun',
+  soloPiano = false,
+  scoreMidi = false,
+  performanceMidi = true,
+): Promise<PipelineResultRaw> {
+  return invoke<PipelineResultRaw>('start_pipeline', {
+    input,
+    backend,
+    soloPiano,
+    scoreMidi,
+    performanceMidi,
+  })
 }
