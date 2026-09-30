@@ -5,11 +5,11 @@
 <h1 align="center">Muse</h1>
 
 <p align="center">
-  <strong>录制或拖入音频，生成 MIDI。</strong>
+  <strong>导入音频媒体，生成并播放 MIDI。</strong>
 </p>
 
 <p align="center">
-  支持钢琴左右手拆分，也支持最多 13 轨的多乐器转录。
+  目前仅支持音频媒体转录，以及原音和 MIDI 结果播放。
 </p>
 
 <p align="center">
@@ -24,22 +24,13 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="许可证">
 </p>
 
----
-
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/65b20771-5be7-44c4-bcd5-c798385f4b20" autoplay loop muted playsinline width="100%"></video>
-</p>
-
----
-
 ## 功能特性
 
-- **独奏钢琴**：Demucs 从混音中分离钢琴，Transkun V2 进行转录，PM2S 负责左右手、调号和拍号识别。
-- **多乐器转录**：YourMT3+ 一次性转录全部乐器，最多支持 13 个轨道，不需要先进行音源分离。
-- **内置播放**：使用三角钢琴音源播放 MIDI，并支持逐轨静音或独奏；可以并排试听原音和转录结果。
-- **录音或导入**：支持麦克风录音，也支持拖入 MP3、WAV、OGG、FLAC 等音频文件。
+- **音频媒体转录**：导入 MP3、WAV、OGG、FLAC、M4A、AAC 或 WMA 文件，生成 MIDI。
+- **独奏钢琴转录**：Demucs 从混音中分离钢琴，Transkun V2 进行转录，PM2S 负责左右手、调号和拍号识别。
+- **多乐器转录**：YourMT3+ 一次性转录全部乐器，最多支持 13 个轨道。
+- **原音与 MIDI 播放**：在应用内播放原始音频和转录结果，并支持 MIDI 音量、进度和轨道控制。
 - **本地运行**：基于 Tauri 2 的原生桌面应用，音频不会离开你的设备。
-- **GPU 加速**：支持 CUDA 和 Apple Silicon MPS。
 
 ---
 
